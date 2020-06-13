@@ -4215,6 +4215,10 @@ void statement::describe_parameters(
 namespace nanodbc
 {
 
+catalog::tables::tables()
+{
+}
+
 catalog::tables::tables(result& find_result)
     : result_(find_result)
 {
