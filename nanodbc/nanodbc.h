@@ -1639,6 +1639,7 @@ public:
     class columns
     {
     public:
+        columns();
         bool next();                           ///< Move to the next result in the result set.
         string table_catalog() const;          ///< Fetch table catalog.
         string table_schema() const;           ///< Fetch table schema.
