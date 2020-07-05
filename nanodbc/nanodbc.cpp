@@ -4359,6 +4359,10 @@ string catalog::primary_keys::primary_key_name() const
     return result_.get<string>(5);
 }
 
+catalog::columns::columns()
+{
+}
+
 catalog::columns::columns(result& find_result)
     : result_(find_result)
 {
