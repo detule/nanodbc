@@ -471,7 +471,6 @@ public:
 public:
     /// \brief Creates a new un-prepared statement.
     /// \see execute(), just_execute(), execute_direct(), just_execute_direct(), open(), prepare()
-    statement();
     statement(bool auto_bind = true);
 
     /// \brief Constructs a statement object and associates it to the given connection.
