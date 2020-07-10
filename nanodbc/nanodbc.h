@@ -1323,6 +1323,27 @@ public:
     /// \brief Returns true if there are no more results in the current result set.
     bool at_end() const noexcept;
 
+    /// \brief Unbind data buffers all columns in the result set.
+    ///
+    /// Wraps unbind(const std::vector<short>& idx)
+    void unbind();
+
+    /// \brief Unbind data buffers for specific columns in the result set.
+    ///
+    /// When a result is constructed, in order to optimize data retrieval,
+    /// we automatically try to bind buffers, except for columns that contain
+    /// long/blob data types.  This method gives the caller the option to unbind
+    /// specific buffers.  Subsequently, during calls to get(), if there is no
+    /// bound data buffer, we will attempt to retrieve the data using a call
+    /// SQLGetData; this is similar to the route taken for columns hosting long
+    /// or bloby data types.  This is suboptimal from efficiency perspective,
+    /// however may be necessary of the driver we are communicating with does
+    /// not support out-of-order retrieval of long data.
+    ///
+    /// \param idx Vector of zero-based indices of columns we wish to unbind.
+    /// \throws programming_error
+    void unbind(const std::vector<short>& idx);
+
     /// \brief Gets data from the given column of the current rowset.
     ///
     /// Columns are numbered from left to right and 0-indexed.
