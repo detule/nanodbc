@@ -3872,11 +3872,6 @@ transaction::operator const class connection&() const
 namespace nanodbc
 {
 
-statement::statement()
-    : impl_(new statement_impl())
-{
-}
-
 statement::statement(bool auto_bind)
     : impl_(new statement_impl(auto_bind))
 {
