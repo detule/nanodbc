@@ -15,7 +15,6 @@
 
 #include <nanodbc/nanodbc.h>
 
-#include <numeric>
 #include <algorithm>
 #include <clocale>
 #include <codecvt>
@@ -25,6 +24,7 @@
 #include <ctime>
 #include <iomanip>
 #include <map>
+#include <numeric>
 #include <type_traits>
 
 #ifndef __clang__
@@ -2589,7 +2589,7 @@ public:
         if (n_columns < 1)
             return;
         std::vector<short> idx(n_columns);
-        std::iota (std::begin(idx), std::end(idx), (short)0);
+        std::iota(std::begin(idx), std::end(idx), (short)0);
         unbind(idx);
         return;
     }
@@ -3104,7 +3104,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
                 NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
         }
         else
-        {   // bound and not blob
+        { // bound and not blob
             const char* s = col.pdata_ + rowset_position_ * col.clen_;
             convert(s, result);
         }
@@ -3163,7 +3163,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
             ;
         }
         else
-        {   // bound and not blob
+        { // bound and not blob
             SQLWCHAR const* s =
                 reinterpret_cast<SQLWCHAR*>(col.pdata_ + rowset_position_ * col.clen_);
             string::size_type const str_size =
@@ -3191,7 +3191,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
     {
         using namespace std;                    // in case intmax_t is in namespace std
         std::string buffer(column_size + 1, 0); // ensure terminating null
-        const intmax_t data = (intmax_t) * ensure_pdata<int64_t>(column);
+        const intmax_t data = (intmax_t)*ensure_pdata<int64_t>(column);
         const int bytes =
             std::snprintf(const_cast<char*>(buffer.data()), column_size + 1, "%jd", data);
         if (bytes == -1)
@@ -3425,28 +3425,29 @@ T* result::result_impl::ensure_pdata(short column) const
     bound_column& col = bound_columns_[column];
     SQLLEN ValueLenOrInd;
     SQLRETURN rc;
-    if (col.bound_) {
+    if (col.bound_)
+    {
         return (T*)(col.pdata_ + rowset_position_ * col.clen_);
     }
 
-    T * buffer = new T;
+    T* buffer = new T;
     const std::size_t buffer_size = sizeof(T);
     void* handle = native_statement_handle();
     NANODBC_CALL_RC(
         SQLGetData,
         rc,
-        handle,          	// StatementHandle
-        column + 1,      	// Col_or_Param_Num
-        sql_ctype<T>::value,    // TargetType
-        buffer,          	// TargetValuePtr
-        buffer_size,     	// BufferLength
-        &ValueLenOrInd); 	// StrLen_or_IndPtr
+        handle,              // StatementHandle
+        column + 1,          // Col_or_Param_Num
+        sql_ctype<T>::value, // TargetType
+        buffer,              // TargetValuePtr
+        buffer_size,         // BufferLength
+        &ValueLenOrInd);     // StrLen_or_IndPtr
 
     if (ValueLenOrInd == SQL_NULL_DATA)
         col.cbdata_[static_cast<size_t>(rowset_position_)] = (SQLINTEGER)SQL_NULL_DATA;
     if (!success(rc))
         NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
-    NANODBC_ASSERT(ValueLenOrInd == (SQLLEN) buffer_size);
+    NANODBC_ASSERT(ValueLenOrInd == (SQLLEN)buffer_size);
 
     return buffer;
 }
