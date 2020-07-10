@@ -706,9 +706,9 @@ public:
     SQLSMALLINT ctype_;
     SQLULEN clen_;
     bool blob_;
-    bool bound_;
     nanodbc::null_type* cbdata_;
     char* pdata_;
+    bool bound_;
 };
 
 // Encapsulates properties of statement parameter.
@@ -3402,7 +3402,7 @@ void result::result_impl::get_ref_from_string_column(short column, T& result) co
         result = static_cast<T>(*ensure_pdata<char>(column));
         return;
     case SQL_C_WCHAR:
-        result = static_cast<T>(*ensure_pdata<SQLWCHAR>(column));
+        result = static_cast<T>(*ensure_pdata<wide_char_t>(column));
         return;
     }
     throw type_incompatible_error();
