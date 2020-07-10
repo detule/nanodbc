@@ -1313,11 +1313,26 @@ public:
         , async_(false)
         , async_enabled_(false)
         , async_event_(nullptr)
+        , auto_bind_(true)
 #endif
     {
     }
 
-    statement_impl(class connection& conn)
+    statement_impl(bool auto_bind)
+        : stmt_(0)
+        , open_(false)
+        , conn_()
+        , bind_len_or_null_()
+#if defined(NANODBC_DO_ASYNC_IMPL)
+        , async_(false)
+        , async_enabled_(false)
+        , async_event_(nullptr)
+#endif
+    {
+        auto_bind_ = auto_bind;
+    }
+
+    statement_impl(class connection& conn, bool auto_bind)
         : stmt_(0)
         , open_(false)
         , conn_()
@@ -1331,10 +1346,11 @@ public:
         , async_event_(nullptr)
 #endif
     {
+        auto_bind_ = auto_bind;
         open(conn);
     }
 
-    statement_impl(class connection& conn, const string& query, long timeout)
+    statement_impl(class connection& conn, const string& query, long timeout, bool auto_bind)
         : stmt_(0)
         , open_(false)
         , conn_()
@@ -1348,6 +1364,7 @@ public:
         , async_event_(nullptr)
 #endif
     {
+        auto_bind_ = auto_bind;
         prepare(conn, query, timeout);
     }
 
@@ -1731,6 +1748,11 @@ public:
         return static_cast<long>(rows);
     }
 
+    bool auto_bind() const
+    {
+        return auto_bind_;
+    }
+
     short columns() const
     {
         SQLSMALLINT cols;
@@ -2073,6 +2095,7 @@ public:
 
 private:
     HSTMT stmt_;
+    bool auto_bind_;
     bool open_;
     class connection conn_;
     std::map<short, std::vector<null_type>> bind_len_or_null_;
@@ -2310,7 +2333,7 @@ public:
         if (!success(rc))
             NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
 
-        auto_bind();
+        maybe_bind(stmt_.auto_bind());
     }
 
     ~result_impl() noexcept { cleanup_bound_columns(); }
@@ -2576,7 +2599,7 @@ public:
             return false;
         if (!success(rc))
             NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
-        auto_bind();
+        maybe_bind(stmt_.auto_bind());
         return true;
     }
 
@@ -2655,6 +2678,9 @@ public:
     }
 
 private:
+    template <typename T>
+    T* ensure_pdata(short column) const;
+
     template <class T, typename std::enable_if<!is_string<T>::value, int>::type = 0>
     void get_ref_impl(short column, T& result) const;
 
@@ -2731,7 +2757,7 @@ private:
         return true;
     }
 
-    void auto_bind()
+    void maybe_bind(bool auto_bind)
     {
         cleanup_bound_columns();
 
@@ -2890,7 +2916,7 @@ private:
         {
             bound_column& col = bound_columns_[i];
             col.cbdata_ = new null_type[static_cast<size_t>(rowset_size_)];
-            if (col.blob_)
+            if (col.blob_ || auto_bind == false)
             {
                 NANODBC_CALL_RC(
                     SQLBindCol,
@@ -2943,11 +2969,11 @@ inline void result::result_impl::get_ref_impl<date>(short column, date& result) 
     switch (col.ctype_)
     {
     case SQL_C_DATE:
-        result = *reinterpret_cast<date*>(col.pdata_ + rowset_position_ * col.clen_);
+        result = *ensure_pdata<date>(column);
         return;
     case SQL_C_TIMESTAMP:
     {
-        timestamp stamp = *reinterpret_cast<timestamp*>(col.pdata_ + rowset_position_ * col.clen_);
+        timestamp stamp = *ensure_pdata<timestamp>(column);
         date d = {stamp.year, stamp.month, stamp.day};
         result = d;
         return;
@@ -2963,11 +2989,11 @@ inline void result::result_impl::get_ref_impl<time>(short column, time& result) 
     switch (col.ctype_)
     {
     case SQL_C_TIME:
-        result = *reinterpret_cast<time*>(col.pdata_ + rowset_position_ * col.clen_);
+        result = *ensure_pdata<time>(column);
         return;
     case SQL_C_TIMESTAMP:
     {
-        timestamp stamp = *reinterpret_cast<timestamp*>(col.pdata_ + rowset_position_ * col.clen_);
+        timestamp stamp = *ensure_pdata<timestamp>(column);
         time t = {stamp.hour, stamp.min, stamp.sec};
         result = t;
         return;
@@ -2984,13 +3010,13 @@ inline void result::result_impl::get_ref_impl<timestamp>(short column, timestamp
     {
     case SQL_C_DATE:
     {
-        date d = *reinterpret_cast<date*>(col.pdata_ + rowset_position_ * col.clen_);
+        date d = *ensure_pdata<date>(column);
         timestamp stamp = {d.year, d.month, d.day, 0, 0, 0, 0};
         result = stamp;
         return;
     }
     case SQL_C_TIMESTAMP:
-        result = *reinterpret_cast<timestamp*>(col.pdata_ + rowset_position_ * col.clen_);
+        result = *ensure_pdata<timestamp>(column);
         return;
     }
     throw type_incompatible_error();
@@ -3007,7 +3033,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
     case SQL_C_CHAR:
     case SQL_C_BINARY:
     {
-        if (col.blob_)
+        if (col.blob_ || !stmt_.auto_bind())
         {
             // Input is always std::string, while output may be std::string or wide_string
             std::string out;
@@ -3054,7 +3080,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
                 NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
         }
         else
-        {
+        {   // bound and not blob
             const char* s = col.pdata_ + rowset_position_ * col.clen_;
             convert(s, result);
         }
@@ -3063,7 +3089,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
 
     case SQL_C_WCHAR:
     {
-        if (col.blob_)
+        if (col.blob_ || !stmt_.auto_bind())
         {
             // Input is always wide_string, output might be std::string or wide_string.
             // Use a string builder to build the output string.
@@ -3113,8 +3139,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
             ;
         }
         else
-        {
-            // Type is unicode in the database, convert if necessary
+        {   // bound and not blob
             SQLWCHAR const* s =
                 reinterpret_cast<SQLWCHAR*>(col.pdata_ + rowset_position_ * col.clen_);
             string::size_type const str_size =
@@ -3128,7 +3153,10 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
 
     case SQL_C_GUID:
     {
-        const char* s = col.pdata_ + rowset_position_ * col.clen_;
+	// Is this an orphaned node - not clear that ctype_ can ever be
+	// SQL_C_GUID
+        // OG: this is incorrect, see column_size
+        const char* s = ensure_pdata<char>(column);
         result.assign(s, s + column_size);
         return;
     }
@@ -3136,8 +3164,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
     case SQL_C_LONG:
     {
         std::string buffer(column_size + 1, 0); // ensure terminating null
-        const wide_char_t data =
-            *reinterpret_cast<wide_char_t*>(col.pdata_ + rowset_position_ * col.clen_);
+        const int32_t data = *ensure_pdata<int32_t>(column);
         const int bytes =
             std::snprintf(const_cast<char*>(buffer.data()), column_size + 1, "%d", data);
         if (bytes == -1)
@@ -3150,8 +3177,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
     {
         using namespace std;                    // in case intmax_t is in namespace std
         std::string buffer(column_size + 1, 0); // ensure terminating null
-        const intmax_t data =
-            (intmax_t) * reinterpret_cast<int64_t*>(col.pdata_ + rowset_position_ * col.clen_);
+        const intmax_t data = (intmax_t) * ensure_pdata<int64_t>(column);
         const int bytes =
             std::snprintf(const_cast<char*>(buffer.data()), column_size + 1, "%jd", data);
         if (bytes == -1)
@@ -3163,7 +3189,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
     case SQL_C_FLOAT:
     {
         std::string buffer(column_size + 1, 0); // ensure terminating null
-        const float data = *reinterpret_cast<float*>(col.pdata_ + rowset_position_ * col.clen_);
+        const float data = *ensure_pdata<float>(column);
         const int bytes =
             std::snprintf(const_cast<char*>(buffer.data()), column_size + 1, "%f", data);
         if (bytes == -1)
@@ -3176,7 +3202,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
     {
         const SQLULEN width = column_size + 2; // account for decimal mark and sign
         std::string buffer(width + 1, 0);      // ensure terminating null
-        const double data = *reinterpret_cast<double*>(col.pdata_ + rowset_position_ * col.clen_);
+        const double data = *ensure_pdata<double>(column);
         const int bytes = std::snprintf(
             const_cast<char*>(buffer.data()),
             width + 1,
@@ -3191,7 +3217,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
 
     case SQL_C_DATE:
     {
-        const date d = *reinterpret_cast<date*>(col.pdata_ + rowset_position_ * col.clen_);
+        const date d = *ensure_pdata<date>(column);
         std::tm st = {0};
         st.tm_year = d.year - 1900;
         st.tm_mon = d.month - 1;
@@ -3207,7 +3233,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
 
     case SQL_C_TIME:
     {
-        const time t = *reinterpret_cast<time*>(col.pdata_ + rowset_position_ * col.clen_);
+        const time t = *ensure_pdata<time>(column);
         std::tm st = {0};
         st.tm_hour = t.hour;
         st.tm_min = t.min;
@@ -3223,8 +3249,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
 
     case SQL_C_TIMESTAMP:
     {
-        const timestamp stamp =
-            *reinterpret_cast<timestamp*>(col.pdata_ + rowset_position_ * col.clen_);
+        const timestamp stamp = *ensure_pdata<timestamp>(column);
         std::tm st = {0};
         st.tm_year = stamp.year - 1900;
         st.tm_mon = stamp.month - 1;
@@ -3357,14 +3382,13 @@ template <class T, typename std::enable_if<is_character<T>::value, int>::type>
 void result::result_impl::get_ref_from_string_column(short column, T& result) const
 {
     bound_column& col = bound_columns_[column];
-    const char* s = col.pdata_ + rowset_position_ * col.clen_;
     switch (col.ctype_)
     {
     case SQL_C_CHAR:
-        result = static_cast<T>(*static_cast<const char*>(s));
+        result = static_cast<T>(*ensure_pdata<char>(column));
         return;
     case SQL_C_WCHAR:
-        result = static_cast<T>(*reinterpret_cast<const SQLWCHAR*>(s));
+        result = static_cast<T>(*ensure_pdata<SQLWCHAR>(column));
         return;
     }
     throw type_incompatible_error();
@@ -3381,12 +3405,43 @@ void result::result_impl::get_ref_from_string_column(short column, T& result) co
     result = from_string<T>(str);
 }
 
+template <typename T>
+T* result::result_impl::ensure_pdata(short column) const
+{
+    bound_column& col = bound_columns_[column];
+    SQLLEN ValueLenOrInd;
+    SQLRETURN rc;
+    if (stmt_.auto_bind()) {
+        return (T*)(col.pdata_ + rowset_position_ * col.clen_);
+    }
+
+    T * buffer = new T;
+    const std::size_t buffer_size = sizeof(T);
+    void* handle = native_statement_handle();
+    NANODBC_CALL_RC(
+        SQLGetData,
+        rc,
+        handle,          	// StatementHandle
+        column + 1,      	// Col_or_Param_Num
+        sql_ctype<T>::value,    // TargetType
+        buffer,          	// TargetValuePtr
+        buffer_size,     	// BufferLength
+        &ValueLenOrInd); 	// StrLen_or_IndPtr
+
+    if (ValueLenOrInd == SQL_NULL_DATA)
+        col.cbdata_[static_cast<size_t>(rowset_position_)] = (SQLINTEGER)SQL_NULL_DATA;
+    if (!success(rc))
+        NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
+    NANODBC_ASSERT(ValueLenOrInd == (SQLLEN) buffer_size);
+
+    return buffer;
+}
+
 template <class T, typename std::enable_if<!is_string<T>::value, int>::type>
 void result::result_impl::get_ref_impl(short column, T& result) const
 {
     bound_column& col = bound_columns_[column];
     using namespace std; // if int64_t is in std namespace (in c++11)
-    const char* s = col.pdata_ + rowset_position_ * col.clen_;
     switch (col.ctype_)
     {
     case SQL_C_CHAR:
@@ -3394,31 +3449,31 @@ void result::result_impl::get_ref_impl(short column, T& result) const
         get_ref_from_string_column(column, result);
         return;
     case SQL_C_SSHORT:
-        result = (T) * (short*)(s);
+	result = (T) * (ensure_pdata<short>(column));
         return;
     case SQL_C_USHORT:
-        result = (T) * (unsigned short*)(s);
+        result = (T) * (ensure_pdata<unsigned short>(column));
         return;
     case SQL_C_LONG:
-        result = (T) * (int32_t*)(s);
+        result = (T) * (ensure_pdata<int32_t>(column));
         return;
     case SQL_C_SLONG:
-        result = (T) * (int32_t*)(s);
+        result = (T) * (ensure_pdata<int32_t>(column));
         return;
     case SQL_C_ULONG:
-        result = (T) * (uint32_t*)(s);
+        result = (T) * (ensure_pdata<uint32_t>(column));
         return;
     case SQL_C_FLOAT:
-        result = (T) * (float*)(s);
+        result = (T) * (ensure_pdata<float>(column));
         return;
     case SQL_C_DOUBLE:
-        result = (T) * (double*)(s);
+        result = (T) * (ensure_pdata<double>(column));
         return;
     case SQL_C_SBIGINT:
-        result = (T) * (int64_t*)(s);
+        result = (T) * (ensure_pdata<int64_t>(column));
         return;
     case SQL_C_UBIGINT:
-        result = (T) * (uint64_t*)(s);
+        result = (T) * (ensure_pdata<uint64_t>(column));
         return;
     }
     throw type_incompatible_error();
@@ -3508,15 +3563,15 @@ std::list<driver> list_drivers()
     return drivers;
 }
 
-result execute(connection& conn, const string& query, long batch_operations, long timeout)
+result execute(connection& conn, const string& query, long batch_operations, long timeout, bool auto_bind)
 {
-    class statement statement;
+    class statement statement(auto_bind);
     return statement.execute_direct(conn, query, batch_operations, timeout);
 }
 
-void just_execute(connection& conn, const string& query, long batch_operations, long timeout)
+void just_execute(connection& conn, const string& query, long batch_operations, long timeout, bool auto_bind)
 {
-    class statement statement;
+    class statement statement(auto_bind);
     statement.just_execute_direct(conn, query, batch_operations, timeout);
 }
 
@@ -3822,8 +3877,13 @@ statement::statement()
 {
 }
 
-statement::statement(class connection& conn)
-    : impl_(new statement_impl(conn))
+statement::statement(bool auto_bind)
+    : impl_(new statement_impl(auto_bind))
+{
+}
+
+statement::statement(class connection& conn, bool auto_bind)
+    : impl_(new statement_impl(conn, auto_bind))
 {
 }
 
@@ -3832,8 +3892,8 @@ statement::statement(statement&& rhs) noexcept
 {
 }
 
-statement::statement(class connection& conn, const string& query, long timeout)
-    : impl_(new statement_impl(conn, query, timeout))
+statement::statement(class connection& conn, const string& query, long timeout, bool auto_bind)
+    : impl_(new statement_impl(conn, query, timeout, auto_bind))
 {
 }
 
@@ -4003,6 +4063,11 @@ long statement::affected_rows() const
 short statement::columns() const
 {
     return impl_->columns();
+}
+
+bool statement::auto_bind() const
+{
+    return impl_->auto_bind();
 }
 
 short statement::parameters() const

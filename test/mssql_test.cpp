@@ -433,6 +433,19 @@ TEST_CASE_METHOD(
         REQUIRE(results.get<nanodbc::string>(2) == NANODBC_TEXT("this is varchar max"));
         REQUIRE(results.get<nanodbc::string>(3) == NANODBC_TEXT("this is text"));
     }
+
+    // Disable auto-bind
+    {
+        nanodbc::statement stmt(connection, false);
+        prepare(stmt, NANODBC_TEXT("select c1, c2, c3, c4 from test_blob_retrieve_out_of_order;"));
+
+        execute(stmt);
+        REQUIRE(results.next());
+        REQUIRE(results.get<int>(0) == 1);
+        REQUIRE(results.get<nanodbc::string>(1) == NANODBC_TEXT("this is varchar max"));
+        REQUIRE(results.get<int>(2) == 11);
+        REQUIRE(results.get<nanodbc::string>(3) == NANODBC_TEXT("this is text"));
+    }
 }
 
 TEST_CASE_METHOD(mssql_fixture, "test_catalog_list_catalogs", "[mssql][catalog][catalogs]")

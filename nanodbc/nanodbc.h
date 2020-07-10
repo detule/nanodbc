@@ -472,18 +472,19 @@ public:
     /// \brief Creates a new un-prepared statement.
     /// \see execute(), just_execute(), execute_direct(), just_execute_direct(), open(), prepare()
     statement();
+    statement(bool auto_bind = true);
 
     /// \brief Constructs a statement object and associates it to the given connection.
     /// \param conn The connection to use.
     /// \see open(), prepare()
-    explicit statement(class connection& conn);
+    explicit statement(class connection& conn, bool auto_bind = true);
 
     /// \brief Constructs and prepares a statement using the given connection and query.
     /// \param conn The connection to use.
     /// \param query The SQL query statement.
     /// \param timeout The number in seconds before query timeout. Default: 0 meaning no timeout.
     /// \see execute(), just_execute(), execute_direct(), just_execute_direct(), open(), prepare()
-    statement(class connection& conn, const string& query, long timeout = 0);
+    statement(class connection& conn, const string& query, long timeout = 0, bool auto_bind = true);
 
     /// \brief Copy constructor.
     statement(const statement& rhs);
@@ -720,6 +721,11 @@ public:
     /// \brief Returns rows affected by the request or -1 if affected rows is not available.
     /// \throws database_error
     long affected_rows() const;
+
+    /// \brief Returns the parameter that indicates whether the caller asked
+    /// for columns to be auto-bound to the result set (this is a constructor
+    /// option set when the statement is instantiated).
+    bool auto_bind() const;
 
     /// \brief Returns the number of columns in a result set.
     /// \throws database_error
@@ -1846,7 +1852,12 @@ std::list<driver> list_drivers();
 /// \attention You will want to use transactions if you are doing batch operations because it will
 ///            prevent auto commits from occurring after each individual operation is executed.
 /// \see open(), prepare(), execute(), result, transaction
-result execute(connection& conn, const string& query, long batch_operations = 1, long timeout = 0);
+result execute(
+    connection& conn,
+    const string& query,
+    long batch_operations = 1,
+    long timeout = 0,
+    bool auto_bind = true);
 
 /// \brief Opens, prepares, and executes query directly without creating result object.
 /// \param conn The connection where the statement will be executed.
@@ -1861,7 +1872,8 @@ void just_execute(
     connection& conn,
     const string& query,
     long batch_operations = 1,
-    long timeout = 0);
+    long timeout = 0,
+    bool auto_bind = true);
 
 /// \brief Execute the previously prepared query now.
 /// \param stmt The prepared statement that will be executed.
