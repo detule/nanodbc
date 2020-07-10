@@ -3411,7 +3411,7 @@ void result::result_impl::get_ref_from_string_column(short column, T& result) co
         result = static_cast<T>(*ensure_pdata<char>(column));
         return;
     case SQL_C_WCHAR:
-        result = static_cast<T>(*ensure_pdata<wide_char_t>(column));
+        result = static_cast<T>(*ensure_pdata<SQLWCHAR>(column));
         return;
     }
     throw type_incompatible_error();
