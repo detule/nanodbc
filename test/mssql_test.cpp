@@ -475,8 +475,9 @@ TEST_CASE_METHOD(
         nanodbc::result results = nanodbc::execute(
             connection,
             NANODBC_TEXT("select c1, c2, c3, c4 from test_blob_retrieve_out_of_order;"));
-        std::vector<short> idx{2};
-        results.unbind(idx);
+        REQUIRE(results.is_bound(0));
+        REQUIRE(results.is_bound(2));
+        results.unbind(2);
         REQUIRE(results.next());
         REQUIRE(results.get<int>(0) == 1);
         REQUIRE(results.get<nanodbc::string>(1) == NANODBC_TEXT("this is varchar max"));

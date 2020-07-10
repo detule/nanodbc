@@ -24,7 +24,6 @@
 #include <ctime>
 #include <iomanip>
 #include <map>
-#include <numeric>
 #include <type_traits>
 
 #ifndef __clang__
@@ -2465,6 +2464,19 @@ public:
         return is_null(column);
     }
 
+    bool is_bound(short column) const
+    {
+        throw_if_column_is_out_of_range(column);
+        bound_column& col = bound_columns_[column];
+        return col.bound_;
+    }
+
+    bool is_bound(const string& column_name) const
+    {
+        const short column = this->column(column_name);
+        return is_bound(column);
+    }
+
     short column(const string& column_name) const
     {
         typedef std::map<string, bound_column*>::const_iterator iter;
@@ -2588,42 +2600,39 @@ public:
         const short n_columns = columns();
         if (n_columns < 1)
             return;
-        std::vector<short> idx(n_columns);
-        std::iota(std::begin(idx), std::end(idx), (short)0);
-        unbind(idx);
-        return;
+        for (short i = 0; i < n_columns; ++i)
+            unbind(i);
     }
 
-    void unbind(const std::vector<short>& idx)
+    void unbind(short column)
     {
         RETCODE rc;
-        const short n_columns = columns();
-        if (n_columns < 1)
-            return;
+        throw_if_column_is_out_of_range(column);
+        bound_column& col = bound_columns_[column];
 
-        NANODBC_ASSERT(bound_columns_);
-        NANODBC_ASSERT(bound_columns_size_);
-        for (std::size_t i = 0; i < idx.size(); ++i)
+        if (is_bound(column))
         {
-            if (idx[i] < 0 || idx[i] >= n_columns)
-                throw programming_error("result::unbind: Index out of range");
-            bound_column& col = bound_columns_[idx[i]];
-            if (col.bound_)
-            {
-                NANODBC_CALL_RC(
-                    SQLBindCol,
-                    rc,
-                    stmt_.native_statement_handle(),
-                    idx[i] + 1,
-                    col.ctype_,
-                    0,
-                    0,
-                    col.cbdata_); // Re-use existing cbdata_ buffer
-                if (!success(rc))
-                    NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
-                col.bound_ = false;
-            }
+            NANODBC_CALL_RC(
+                SQLBindCol,
+                rc,
+                stmt_.native_statement_handle(),
+                column + 1,
+                col.ctype_,
+                0,
+                0,
+                col.cbdata_); // Re-use existing cbdata_ buffer
+            if (!success(rc))
+                NANODBC_THROW_DATABASE_ERROR(stmt_.native_statement_handle(), SQL_HANDLE_STMT);
+            delete[] col.pdata_;
+            col.pdata_ = 0;
+            col.bound_ = false;
         }
+    }
+
+    void unbind(const string& column_name)
+    {
+        const short column = this->column(column_name);
+        unbind(column);
     }
 
     template <class T>
@@ -3057,7 +3066,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
     case SQL_C_CHAR:
     case SQL_C_BINARY:
     {
-        if (!col.bound_)
+        if (!is_bound(column))
         {
             // Input is always std::string, while output may be std::string or wide_string
             std::string out;
@@ -3113,7 +3122,7 @@ inline void result::result_impl::get_ref_impl(short column, T& result) const
 
     case SQL_C_WCHAR:
     {
-        if (!col.bound_)
+        if (!is_bound(column))
         {
             // Input is always wide_string, output might be std::string or wide_string.
             // Use a string builder to build the output string.
@@ -3295,7 +3304,7 @@ inline void result::result_impl::get_ref_impl<std::vector<std::uint8_t>>(
     {
     case SQL_C_BINARY:
     {
-        if (!col.bound_)
+        if (!is_bound(column))
         {
             // Input and output is always array of bytes.
             std::vector<std::uint8_t> out;
@@ -3425,7 +3434,7 @@ T* result::result_impl::ensure_pdata(short column) const
     bound_column& col = bound_columns_[column];
     SQLLEN ValueLenOrInd;
     SQLRETURN rc;
-    if (col.bound_)
+    if (is_bound(column))
     {
         return (T*)(col.pdata_ + rowset_position_ * col.clen_);
     }
@@ -4928,6 +4937,16 @@ bool result::is_null(const string& column_name) const
     return impl_->is_null(column_name);
 }
 
+bool result::is_bound(short column) const
+{
+    return impl_->is_bound(column);
+}
+
+bool result::is_bound(const string& column_name) const
+{
+    return impl_->is_bound(column_name);
+}
+
 short result::column(const string& column_name) const
 {
     return impl_->column(column_name);
@@ -4998,9 +5017,14 @@ void result::unbind()
     impl_->unbind();
 }
 
-void result::unbind(const std::vector<short>& idx)
+void result::unbind(short column)
 {
-    impl_->unbind(idx);
+    impl_->unbind(column);
+}
+
+void result::unbind(const string& column_name)
+{
+    impl_->unbind(column_name);
 }
 
 template <class T>
