@@ -28,7 +28,7 @@ struct mssql_fixture : public test_case_fixture
             connection_string_ = get_env("NANODBC_TEST_CONNSTR_MSSQL");
     }
 
-#if __cpp_lib_variant >= 201606L || _MSC_VER
+#if __cpp_lib_variant >= 201606L
     using base_test_fixture::connect;
     nanodbc::connection
     connect(std::list<nanodbc::connection::attribute> const& attributes, bool const& is_async)
@@ -1588,7 +1588,7 @@ TEST_CASE_METHOD(
     }
 }
 
-#if __cpp_lib_variant >= 201606L || _MSC_VER
+#if __cpp_lib_variant >= 201606L
 TEST_CASE_METHOD(mssql_fixture, "test_conn_attributes", "[mssql][conn_attibutes]")
 {
     {
@@ -1609,7 +1609,7 @@ TEST_CASE_METHOD(mssql_fixture, "test_conn_attributes", "[mssql][conn_attibutes]
         // SQLGetConnectAttr are OK despite the state possibly being
         // SQL_STILL_EXECUTING.
 
-        // Test whether catalog was set.
+        // Test whether catalog was set
         // REQUIRE(conn.catalog_name() == CATALOG_IN);
 
         // Test whether timeout was set
@@ -1645,13 +1645,12 @@ TEST_CASE_METHOD(mssql_fixture, "test_conn_attributes", "[mssql][conn_attibutes]
 #if !defined(NANODBC_DISABLE_ASYNC) && defined(WIN32)
     {
         std::list<nanodbc::connection::attribute> attributes;
-        attributes.push_back(attribute(
-                    SQL_ATTR_ASYNC_DBC_FUNCTIONS_ENABLE,
-                    SQL_IS_UINTEGER,
-                    SQL_ASYNC_DBC_ENABLE_ON));
+        attributes.push_back(
+            {SQL_ATTR_ASYNC_DBC_FUNCTIONS_ENABLE,
+             SQL_IS_UINTEGER,
+             SQL_ASYNC_DBC_ENABLE_ON});
         HANDLE event_handle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        attributes.push_back(attribute(
-            SQL_ATTR_ASYNC_DBC_EVENT, SQL_IS_POINTER, event_handle));
+        attributes.push_back({SQL_ATTR_ASYNC_DBC_EVENT, SQL_IS_POINTER, event_handle});
 
         auto conn = connect(attributes, true);
         WaitForSingleObject(event_handle, INFINITE);

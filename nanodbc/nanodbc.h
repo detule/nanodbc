@@ -1288,7 +1288,7 @@ private:
     class connection_impl;
     friend class nanodbc::transaction::transaction_impl;
 
-#if __cpp_lib_variant >= 201606L || _MSC_VER
+#if __cpp_lib_variant >= 201606L
 public:
     /// \brief A 3-element tuple representing a connection attribute.
     ///
@@ -1383,7 +1383,7 @@ public:
     /// \see connected(), connect()
     explicit connection(string const& connection_string, long timeout = 0);
 
-#if __cpp_lib_variant >= 201606L || _MSC_VER
+#if __cpp_lib_variant >= 201606L
     /// \brief Create new connection object, set the connection attributes passed as
     /// arguments and connect to the given data source.
     ///
@@ -1450,7 +1450,7 @@ public:
     /// \see connected()
     void connect(string const& connection_string, long timeout = 0);
 
-#if __cpp_lib_variant >= 201606L || _MSC_VER
+#if __cpp_lib_variant >= 201606L
     /// \brief Set the connection attributes passed by the user, and connect to the given
     /// data source.
     /// \param dsn The name of the data source.
