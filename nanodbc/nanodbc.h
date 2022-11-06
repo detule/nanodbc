@@ -87,7 +87,9 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#if __cpp_lib_variant >= 201606L
 #include <variant>
+#endif
 #include <vector>
 
 #ifndef __clang__
