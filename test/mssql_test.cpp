@@ -28,6 +28,49 @@ struct mssql_fixture : public test_case_fixture
             connection_string_ = get_env("NANODBC_TEST_CONNSTR_MSSQL");
     }
 
+#if __cpp_lib_variant >= 201606L
+    using base_test_fixture::connect;
+    nanodbc::connection
+    connect(std::list<nanodbc::connection::attribute> const& attributes, bool const& is_async)
+    {
+        nanodbc::connection connection(connection_string_, attributes);
+        if (!is_async)
+        {
+            REQUIRE(connection.connected());
+            vendor_ = get_vendor(connection.dbms_name());
+        }
+        return connection;
+    }
+#endif
+
+#if !defined(NANODBC_DISABLE_ASYNC) && defined(WIN32)
+    void test_async_internal(nanodbc::connection& conn, HANDLE& event_handle)
+    {
+        nanodbc::statement stmt(conn);
+        if (stmt.async_prepare(NANODBC_TEXT("select count(*) from sys.tables;"), event_handle))
+            WaitForSingleObject(event_handle, INFINITE);
+        stmt.complete_prepare();
+
+        if (stmt.async_execute(event_handle))
+            WaitForSingleObject(event_handle, INFINITE);
+        nanodbc::result row = stmt.complete_execute();
+
+        if (row.async_next(event_handle))
+            WaitForSingleObject(event_handle, INFINITE);
+        REQUIRE(row.complete_next());
+
+        REQUIRE(row.get<int>(0) >= 0);
+    }
+#endif
+
+    inline bool success(RETCODE rc)
+    {
+#ifdef NANODBC_ODBC_API_DEBUG
+        std::cerr << "<-- rc: " << return_code(rc) << " | " << std::endl;
+#endif
+        return rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO;
+    }
+
     // `name` is a type name
     // `def` is a comma separated column definitions, trailing '(' and ')' are optional.
     void create_table_type(
@@ -542,7 +585,7 @@ TEST_CASE_METHOD(
         REQUIRE(results.next());
         REQUIRE(results.get<int>(0) == 1);
         REQUIRE_THROWS_WITH(
-            results.get<nanodbc::string>(1), Catch::Contains("Invalid Descriptor Index"));
+            results.get<nanodbc::string>(1), Catch::Contains("07009")); // Invalid Descriptor Index
     }
 
     // Query bound first, then unbound.
@@ -584,7 +627,7 @@ TEST_CASE_METHOD(
         REQUIRE(results.get<int>(1) == 11);
         REQUIRE(results.get<nanodbc::string>(3) == NANODBC_TEXT("this is text"));
         REQUIRE_THROWS_WITH(
-            results.get<nanodbc::string>(2), Catch::Contains("Invalid Descriptor Index"));
+            results.get<nanodbc::string>(2), Catch::Contains("07009")); // Invalid Descriptor Index
     }
 
     // Query bound and unbound interleaved.
@@ -613,7 +656,8 @@ TEST_CASE_METHOD(
         results.unbind();
         REQUIRE(results.next());
         REQUIRE(results.get<nanodbc::string>(1) == NANODBC_TEXT("this is varchar max"));
-        REQUIRE_THROWS_WITH(results.get<int>(0), Catch::Contains("Invalid Descriptor Index"));
+        REQUIRE_THROWS_WITH(
+            results.get<int>(0), Catch::Contains("07009")); // Invalid Descriptor Index
     }
 
     // Query bound and unbound interleaved.
@@ -785,7 +829,7 @@ TEST_CASE_METHOD(mssql_fixture, "test_statement_with_empty_connection", "[mssql]
     c.allocate();
     nanodbc::statement s;
     REQUIRE_THROWS_AS(s.open(c), nanodbc::database_error);
-    REQUIRE_THROWS_WITH(s.open(c), Catch::Contains("Connection"));
+    REQUIRE_THROWS_WITH(s.open(c), Catch::Contains("08003")); // Connection not open
 }
 
 TEST_CASE_METHOD(mssql_fixture, "test_string", "[mssql][string]")
@@ -1067,9 +1111,17 @@ TEST_CASE_METHOD(mssql_fixture, "test_win32_variant", "[mssql][variant][windows]
     test_win32_variant();
 }
 
-TEST_CASE_METHOD(mssql_fixture, "test_win32_variant_null", "[mssql][variant][windows]")
+TEST_CASE_METHOD(mssql_fixture, "test_win32_variant_null", "[mssql][variant][windows][null]")
 {
     test_win32_variant_null();
+}
+
+TEST_CASE_METHOD(
+    mssql_fixture,
+    "test_win32_variant_null_literal",
+    "[mssql][variant][windows][null]")
+{
+    test_win32_variant_null_literal();
 }
 
 TEST_CASE_METHOD(mssql_fixture, "test_win32_variant_bit", "[mssql][variant][windows]")
@@ -1119,27 +1171,15 @@ TEST_CASE_METHOD(mssql_fixture, "test_while_next_iteration", "[mssql][looping]")
 #if !defined(NANODBC_DISABLE_ASYNC) && defined(WIN32)
 TEST_CASE_METHOD(mssql_fixture, "test_async", "[mssql][async]")
 {
-    HANDLE event_handle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    HANDLE event_handle = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    REQUIRE(event_handle != nullptr);
 
     nanodbc::connection conn;
-    if (conn.async_connect(connection_string_, event_handle))
-        WaitForSingleObject(event_handle, INFINITE);
+    if (event_handle && conn.async_connect(connection_string_, event_handle))
+        ::WaitForSingleObject(event_handle, INFINITE);
     conn.async_complete();
 
-    nanodbc::statement stmt(conn);
-    if (stmt.async_prepare(NANODBC_TEXT("select count(*) from sys.tables;"), event_handle))
-        WaitForSingleObject(event_handle, INFINITE);
-    stmt.complete_prepare();
-
-    if (stmt.async_execute(event_handle))
-        WaitForSingleObject(event_handle, INFINITE);
-    nanodbc::result row = stmt.complete_execute();
-
-    if (row.async_next(event_handle))
-        WaitForSingleObject(event_handle, INFINITE);
-    REQUIRE(row.complete_next());
-
-    REQUIRE(row.get<int>(0) >= 0);
+    test_async_internal(conn, event_handle);
 }
 #endif
 
@@ -1301,16 +1341,19 @@ struct mssql_table_valued_parameter_fixture : mssql_fixture
         p1_col3_.resize(num_rows_);
         p1_col4_.resize(num_rows_);
 
+        constexpr auto size_16k = static_cast<std::size_t>(16) * 1024;
+        constexpr auto size_32k = static_cast<std::size_t>(32) * 1024;
+
         for (int i = 0; i < num_rows_; ++i)
         {
             p1_col0_[i] = i + 1;
             p1_col1_[i] = std::uniform_int_distribution<int64_t>()(gen);
-            p1_col2_[i] = create_random_string<std::string>(16 * 1024, 32 * 1024);
-            p1_col3_[i] = create_random_string<nanodbc::wide_string>(16 * 1024, 32 * 1024);
-            p1_col4_[i] = create_random_binary(16 * 1024, 32 * 1024);
+            p1_col2_[i] = create_random_string<std::string>(size_16k, size_32k);
+            p1_col3_[i] = create_random_string<nanodbc::wide_string>(size_16k, size_32k);
+            p1_col4_[i] = create_random_binary(size_16k, size_32k);
         };
 
-        p2_ = create_random_string<nanodbc::string>(16 * 1024, 32 * 1024);
+        p2_ = create_random_string<nanodbc::string>(size_16k, size_32k);
     }
 
     int num_rows_;
@@ -1558,4 +1601,110 @@ TEST_CASE_METHOD(
     }
 }
 
+#if __cpp_lib_variant >= 201606L
+TEST_CASE_METHOD(mssql_fixture, "test_conn_attributes", "[mssql][conn_attibutes]")
+{
+    {
+        std::list<nanodbc::connection::attribute> attributes;
+        nanodbc::string CATALOG_IN(NANODBC_TEXT("tempdb"));
+        std::string TRACEFILE_IN("nanodbc_test.log");
+        size_t CATALOG_IN_LENGTH = CATALOG_IN.size() * sizeof(nanodbc::string::value_type);
+        size_t TRACEFILE_IN_LENGTH = TRACEFILE_IN.size();
+        long TIMEOUT_IN = 7;
+
+        attributes.push_back({SQL_ATTR_LOGIN_TIMEOUT, SQL_IS_UINTEGER, (std::uintptr_t)TIMEOUT_IN});
+        attributes.push_back({SQL_ATTR_CURRENT_CATALOG, (long)CATALOG_IN_LENGTH, CATALOG_IN});
+        attributes.push_back(
+            {SQL_ATTR_TRACE, (long)SQL_IS_UINTEGER, (std::uintptr_t)SQL_OPT_TRACE_ON});
+        attributes.push_back({SQL_ATTR_TRACEFILE, (long)TRACEFILE_IN_LENGTH, TRACEFILE_IN});
+
+        auto conn = connect(attributes, false);
+        // We may have connected async, but the following calls to
+        // SQLGetConnectAttr are OK despite the state possibly being
+        // SQL_STILL_EXECUTING.
+
+        // Test whether catalog was set
+        // REQUIRE(conn.catalog_name() == CATALOG_IN);
+
+        // Test whether timeout was set
+        long timeout_out(0);
+        SQLINTEGER length(0);
+        RETCODE rc = ::SQLGetConnectAttr(
+            conn.native_dbc_handle(),
+            SQL_ATTR_LOGIN_TIMEOUT,
+            &timeout_out,
+            sizeof(timeout_out),
+            &length);
+        REQUIRE(success(rc));
+        REQUIRE(timeout_out == TIMEOUT_IN);
+
+        // Test trace-file.
+        // 1. Call GetConnectAttr to get length
+        // 2. Call GetConnectAttr to get actual
+        //    buffer
+        length = 0;
+        rc = ::SQLGetConnectAttr(conn.native_dbc_handle(), SQL_ATTR_TRACEFILE, nullptr, 0, &length);
+        REQUIRE(success(rc));
+
+        std::string tracefile_out(TRACEFILE_IN_LENGTH + 5, 0);
+        rc = ::SQLGetConnectAttr(
+            conn.native_dbc_handle(),
+            SQL_ATTR_TRACEFILE,
+            &tracefile_out[0],
+            (SQLINTEGER)(TRACEFILE_IN_LENGTH + 5),
+            &length);
+        REQUIRE(success(rc));
+        REQUIRE(tracefile_out.substr(0, TRACEFILE_IN_LENGTH) == TRACEFILE_IN);
+    }
+#if !defined(NANODBC_DISABLE_ASYNC) && defined(WIN32)
+    {
+        std::list<nanodbc::connection::attribute> attributes;
+        attributes.push_back(
+            {SQL_ATTR_ASYNC_DBC_FUNCTIONS_ENABLE,
+             SQL_IS_UINTEGER,
+             (std::uintptr_t)SQL_ASYNC_DBC_ENABLE_ON});
+        HANDLE event_handle = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        REQUIRE(event_handle != nullptr);
+        attributes.push_back(
+            {SQL_ATTR_ASYNC_DBC_EVENT, SQL_IS_POINTER, (std::uintptr_t)event_handle});
+
+        auto conn = connect(attributes, true);
+        if (event_handle) // for static analysis
+            ::WaitForSingleObject(event_handle, INFINITE);
+        conn.async_complete();
+        REQUIRE(conn.connected());
+        test_async_internal(conn, event_handle);
+    }
+#endif
+}
+#endif
+
+#if defined(NANODBC_ENABLE_UNICODE)
+/* Test that when we have Unicode data stored in a
+ * varchar column, if we have the OVERALLOCATE_CHAR
+ * flag enabled, we are able to retrieve the entire
+ * result.
+ */
+TEST_CASE_METHOD(mssql_fixture, "test_overallocate", "[mssql][overallocate]")
+{
+    auto conn = connect();
+    auto val = nanodbc::string(u"grün");
+    auto sql = NANODBC_TEXT("SELECT '") + val + NANODBC_TEXT("' AS A");
+    nanodbc::result result = execute(conn, sql);
+    REQUIRE(result.next());
+    auto res = result.get<nanodbc::string>(0);
+#if defined(NANODBC_OVERALLOCATE_CHAR)
+    REQUIRE(res == val);
+    REQUIRE(res.size() == 4);
+#else
+    /*
+     * Commented out since testing for "incorrect" behavior is probably
+     * not a good idea.  But here to demonstrate the effect of
+     * enabling the NANODBC_OVERALLOCATE_CHAR flag.
+    REQUIRE( res != val );
+    REQUIRE(res.size() == 3);
+    */
+#endif
+}
+#endif
 #endif
