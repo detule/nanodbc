@@ -87,6 +87,13 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#ifdef __has_include         // Check if __has_include is present
+#if __has_include(<variant>) // Check for a standard library
+#include <variant>
+#elif __has_include(<experimental/variant>) // Check for an experimental version
+#include <experimental/variant>
+#endif
+#endif
 #include <vector>
 
 #ifndef __clang__
@@ -1282,6 +1289,73 @@ private:
 /// \brief Manages and encapsulates ODBC resources such as the connection and environment handles.
 class connection
 {
+
+private:
+    class connection_impl;
+    friend class nanodbc::transaction::transaction_impl;
+
+#if __cpp_lib_variant >= 201606L
+public:
+    /// \brief A class representing a connection attribute.
+    ///
+    /// Callers should create attributes using the 3 argument constructor.
+    /// First argument is the Attribute argument to the ODBC SQLSetConnectAttr
+    /// function.  The second is the StringLength, and the third is used to
+    /// inform the ValuePtr argument to SQLSetConnectAttr.  This argument,
+    /// a std::variant, is a type safe union of std::vector<uint8_t> ( binary
+    /// buffer payloads ), nanodbc::string ( string payloads ), or std::(u)intptr_t,
+    /// for both u/int payloads, as well as pointers to more generic buffers.
+    ///
+    /// See https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlsetconnectattr-function
+    class attribute
+    {
+    public:
+#ifdef NANODBC_ENABLE_UNICODE
+        typedef std::
+            variant<std::vector<uint8_t>, string, std::string, std::intptr_t, std::uintptr_t>
+                variant;
+#else
+        typedef std::variant<std::vector<uint8_t>, string, std::intptr_t, std::uintptr_t> variant;
+#endif
+        attribute() = delete;
+        attribute& operator=(attribute const&) = delete;
+        attribute(attribute const& other);
+        attribute(long const& attribute, long const& string_length, variant const& resource);
+
+    private:
+        void extractValuePtr();
+
+        long attribute_;
+        long string_length_;
+        variant resource_;
+        void* value_ptr_;
+        friend class nanodbc::connection::connection_impl;
+    };
+#else
+private:
+    // Prior to C++17 connection::attribute is not public, rather
+    // defined here as private so that we don't have to ifdef some of
+    // the internals in connection_impl that route timeout/async through
+    // the API endpoints that take connection::attribute as input.
+    class attribute
+    {
+    public:
+        attribute(long const& attribute, long const& string_length, std::uintptr_t value)
+            : attribute_(attribute)
+            , string_length_(string_length)
+            , value_ptr_((void*)value){};
+        attribute(long const& attribute, long const& string_length, void* value_ptr)
+            : attribute_(attribute)
+            , string_length_(string_length)
+            , value_ptr_(value_ptr){};
+
+    private:
+        long attribute_;
+        long string_length_;
+        void* value_ptr_;
+        friend class nanodbc::connection::connection_impl;
+    };
+#endif
 public:
     /// \brief Create new connection object, initially not connected.
     connection();
@@ -1321,6 +1395,37 @@ public:
     /// \see connected(), connect()
     explicit connection(string const& connection_string, long timeout = 0);
 
+#if __cpp_lib_variant >= 201606L
+    /// \brief Create new connection object, set the connection attributes passed as
+    /// arguments and connect to the given data source.
+    ///
+    /// The function calls ODBC API SQLConnect.  To set connection attributes,
+    /// SQLSetConnectAttr is called.
+    ///
+    /// \param dsn The name of the data source name (DSN).
+    /// \param user The username for authenticating to the data source.
+    /// \param pass The password for authenticating to the data source.
+    /// \param attributes A list of connection attributes to be set prior to connecting.
+    /// \throws database_error
+    /// \see connected(), connect(), attribute
+
+    connection(
+        string const& dsn,
+        string const& user,
+        string const& pass,
+        std::list<attribute> const& attributes);
+    /// \brief Create new connection object, set the connection attributes passed as
+    /// arguments and connect to the given connection string.
+    ///
+    /// The function calls ODBC API SQLDriverConnect.  To set connection attributes,
+    /// SQLSetConnectAttr is called.
+    ///
+    /// \param connection_string The connection string for establishing a connection.
+    /// \param attributes A list of connection attributes to be set prior to connecting.
+    /// \throws database_error
+    /// \see connected(), connect(), attribute
+    connection(string const& connection_string, std::list<attribute> const& attributes);
+#endif
     /// \brief Automatically disconnects from the database and frees all associated resources.
     ///
     /// Will not throw even if disconnecting causes some kind of error and raises an exception.
@@ -1357,6 +1462,29 @@ public:
     /// \see connected()
     void connect(string const& connection_string, long timeout = 0);
 
+#if __cpp_lib_variant >= 201606L
+    /// \brief Set the connection attributes passed by the user, and connect to the given
+    /// data source.
+    /// \param dsn The name of the data source.
+    /// \param user The username for authenticating to the data source.
+    /// \param pass The password for authenticating to the data source.
+    /// \param attributes A list of connection attributes to be set prior to connecting.
+    /// \throws database_error
+    /// \see connected(), attribute
+    void connect(
+        string const& dsn,
+        string const& user,
+        string const& pass,
+        std::list<attribute> const& attributes);
+
+    /// \brief Set the connection attributes passed by the user, and connect to the given
+    /// connection string.
+    /// \param connection_string The connection string for establishing a connection.
+    /// \param attributes A list of connection attributes to be set prior to connecting.
+    /// \throws database_error
+    /// \see connected(), attribute
+    void connect(string const& connection_string, std::list<attribute> const& attributes);
+#endif
 #if !defined(NANODBC_DISABLE_ASYNC)
     /// \brief Initiate an asynchronous connection operation to the given data source.
     ///
@@ -1460,10 +1588,6 @@ private:
     void rollback(bool onoff);
 
 private:
-    class connection_impl;
-    friend class nanodbc::transaction::transaction_impl;
-
-private:
     std::shared_ptr<connection_impl> impl_;
 };
 
@@ -1519,10 +1643,11 @@ public:
     /// \brief Reports if number of affected rows is available.
     /// \return true if number of affected rows is known, regardless of the value;
     /// false if the number is not available.
-    /// \throws database_error
+    /// \throws database_error {
     /// \code{.cpp}
     /// assert(r.has_affected_rows() == (r.affected_rows() >= 0));
     /// \endcode
+    /// }
     bool has_affected_rows() const;
 
     /// \brief Rows in the current rowset or 0 if the number of rows is not available.

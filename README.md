@@ -15,7 +15,7 @@ user information, example usage, propaganda, and detailed source level documenta
 
 | Branch | Linux/OSX | Windows | Coverage | Coverity |
 | :---   |:---       |:---     |:---      |:---      |
-|`main`| none      | [![main][appveyor-badge]][appveyor] | [![codecov](https://codecov.io/gh/nanodbc/nanodbc/branch/main/graph/badge.svg)](https://codecov.io/gh/nanodbc/nanodbc) | [![coverity_scan][coverity-badge]][coverity] |
+|`main` | [![main](https://github.com/nanodbc/nanodbc/actions/workflows/ci-linux.yml/badge.svg?branch=main)](https://github.com/nanodbc/nanodbc/actions/workflows/ci-linux.yml) | [![main](https://github.com/nanodbc/nanodbc/actions/workflows/ci-windows.yml/badge.svg?branch=main)](https://github.com/nanodbc/nanodbc/actions/workflows/ci-windows.yml) | [![codecov](https://codecov.io/gh/nanodbc/nanodbc/branch/main/graph/badge.svg)](https://codecov.io/gh/nanodbc/nanodbc) | [![coverity_scan][coverity-badge]][coverity] |
 
 > **Note:** The Coverity status uses the [coverity_scan][nanodbc-coverity] branch.
 > When `main` has had a significant amount of work pushed to it,
@@ -124,6 +124,7 @@ environment to use [Boost][boost].
 | `NANODBC_ENABLE_BOOST`             | `OFF` or `ON`        | Use Boost for Unicode string convertions (requires [Boost.Locale][boost-locale]). Workaround to issue [#24](https://github.com/nanodbc/nanodbc/issues/24). |
 | `NANODBC_ENABLE_UNICODE`           | `OFF` or `ON`        | Enable Unicode support. `nanodbc::string` becomes `std::u16string` or `std::u32string`. |
 | `NANODBC_ENABLE_WORKAROUND_NODATA` | `OFF` or `ON`        | Enable `SQL_NO_DATA` workaround to issue [#43](https://github.com/nanodbc/nanodbc/issues/43). |
+| `NANODBC_OVERALLOCATE_CHAR`        | `OFF` or `ON`        | Overallocate auto-bound n/var/char buffers to accomodate retrieving Unicode data in VARCHAR columns [#219](https://github.com/nanodbc/nanodbc/issues/219). |
 | `NANODBC_ODBC_VERSION`             | `SQL_OV_ODBC3[...]`  | Forces ODBC version to use. Default is `SQL_OV_ODBC3_80` if available, otherwise `SQL_OV_ODBC3`. |
 
 ### Note About iODBC
@@ -144,10 +145,17 @@ If you must use iODBC, consider _disabling_ unicode mode to avoid `wchar_t` issu
 
 ### Code Style
 
-[`clang-format`][clang-format] handles all C++ code formatting for nanodbc. This utility is
-[brew-installable][brew] on OS X (`brew install clang-format`) and is available on all major
-platforms. See our `.clang-format` configuration file for details on the style. The script
-`utility/style.sh` formats all code in the repository automatically.
+[clang-format][clang-format] version 15 handles all C++ code formatting for nanodbc.
+See our [.clang-format](.clang-format) configuration file for details on the style and
+currently required version of `clang-format` specified in the comment at the top of the file
+The script [utility/style.sh](utility/style.sh) formats all code in the repository automatically.
+
+To run `clang-format` against the whole nanodbc codebase:
+
+```shell
+./utility/style.sh
+```
+
 To run `clang-format` on a single file use the following.
 
 ```shell
@@ -310,8 +318,8 @@ Finally, announce the new release to the public.
 [unixodbc]:     http://www.unixodbc.org/
 [vagrant]:      https://www.vagrantup.com/
 
-[appveyor]:         https://ci.appveyor.com/project/nanodbc/nanodbc?branch=main
-[appveyor-badge]:   https://ci.appveyor.com/api/projects/status/pvgwgg3qgdcnylp1/branch/main?svg=true
+[ci-windows]:   https://github.com/nanodbc/nanodbc/actions/workflows/ci-windows.yml
+[ci-win-svg]:   https://github.com/nanodbc/nanodbc/actions/workflows/ci-windows.yml/badge.svg?branch=main
 
 [coverity]:         https://scan.coverity.com/projects/nanodbc-nanodbc
 [coverity-badge]:   https://scan.coverity.com/projects/7437/badge.svg

@@ -1,9 +1,20 @@
+---
 # GHA workflow to run Static Analysis and submit results to GitHub Code Scanning Alerts
 name: "Analysis"
 
 on:
   push:
-    branches: [ main ]
+    branches:
+    - main
+    paths:
+      - '**.cpp'
+      - '**.h'
+      - '.github/workflows/analysis.yml'
+  pull_request:
+    paths:
+      - '**.cpp'
+      - '**.h'
+      - '.github/workflows/analysis.yml'
 
 env:
   build: '${{ github.workspace }}/build'
@@ -22,7 +33,7 @@ jobs:
         run: cmake -B ${{ env.build }} -DCMAKE_BUILD_TYPE=${{ env.config }}
 
       - name: Run MSVC Code Analysis
-        uses: microsoft/msvc-code-analysis-action@v0.1.0
+        uses: microsoft/msvc-code-analysis-action@v0.1.1
         # Provide a unique ID to access the sarif output path
         id: run-core-analysis
         with:
@@ -58,7 +69,7 @@ jobs:
         run: cmake -B ${{ env.build }} -DCMAKE_BUILD_TYPE=${{ env.config }}
 
       - name: Run MSVC Code Analysis
-        uses: microsoft/msvc-code-analysis-action@v0.1.0
+        uses: microsoft/msvc-code-analysis-action@v0.1.1
         # Provide a unique ID to access the sarif output path
         id: run-native-analysis
         with:

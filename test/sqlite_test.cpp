@@ -301,14 +301,14 @@ TEST_CASE_METHOD(sqlite_fixture, "test_integral_boundary", "[sqlite][integral]")
     auto const sql =
         NANODBC_TEXT("insert into test_integral_boundary(i1,i2,i4,i8) values (?,?,?,?);");
 
-    std::int16_t const i1min = std::numeric_limits<std::int8_t>::min();
-    auto const i2min = std::numeric_limits<std::int16_t>::min();
-    auto const i4min = std::numeric_limits<std::int32_t>::min();
-    auto const i8min = std::numeric_limits<std::int64_t>::min();
-    std::int16_t const i1max = std::numeric_limits<std::int8_t>::max();
-    auto const i2max = std::numeric_limits<std::int16_t>::max();
-    auto const i4max = std::numeric_limits<std::int32_t>::max();
-    auto const i8max = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int16_t i1min = std::numeric_limits<std::int8_t>::min();
+    constexpr auto i2min = std::numeric_limits<std::int16_t>::min();
+    constexpr auto i4min = std::numeric_limits<std::int32_t>::min();
+    constexpr auto i8min = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int16_t i1max = std::numeric_limits<std::int8_t>::max();
+    constexpr auto i2max = std::numeric_limits<std::int16_t>::max();
+    constexpr auto i4max = std::numeric_limits<std::int32_t>::max();
+    constexpr auto i8max = std::numeric_limits<std::int64_t>::max();
 
     // min
     {
@@ -481,9 +481,12 @@ TEST_CASE_METHOD(sqlite_fixture, "test_win32_variant", "[sqlite][variant][window
     test_win32_variant();
 }
 
-TEST_CASE_METHOD(sqlite_fixture, "test_win32_variant_null", "[sqlite][variant][windows]")
+TEST_CASE_METHOD(
+    sqlite_fixture,
+    "test_win32_variant_null_literal",
+    "[sqlite][variant][windows][null]")
 {
-    test_win32_variant_null();
+    test_win32_variant_null_literal();
 }
 #endif // _MSC_VER
 

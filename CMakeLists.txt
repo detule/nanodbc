@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.0.0)
+message( STATUS "cmake version: ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION}" )
+
 project(nanodbc CXX)
 
 # NOTE: All options follow CMake convention:
@@ -16,6 +18,7 @@ option(NANODBC_DISABLE_MSSQL_TVP "Do not use MSSQL Table-valued parameter" OFF)
 option(NANODBC_ENABLE_COVERAGE "Enable test coverage reporting for GCC/clang" OFF)
 option(NANODBC_ENABLE_BOOST "Use Boost for Unicode string convertions (requires Boost.Locale)" OFF)
 option(NANODBC_ENABLE_UNICODE "Enable Unicode support" OFF)
+option(NANODBC_OVERALLOCATE_CHAR "Allocate buffers of sufficient length such that Unicode can be stored in VAR/CHAR columns" OFF)
 option(NANODBC_ENABLE_WORKAROUND_NODATA "Enable SQL_NO_DATA workaround (see Issue #33)" OFF)
 
 ########################################
@@ -28,15 +31,21 @@ string(REGEX REPLACE "^[0-9]+\\.[0-9]+\\.([0-9]+)" "\\1" NANODBC_VERSION_PATCH "
 message(STATUS "nanodbc version: ${NANODBC_VERSION}")
 
 ########################################
-## require and enable C++0x/11/14
+## nanodbc compilation
 ########################################
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "The C++ standard to use for NANODBC")
+set(CMAKE_CXX_STANDARD 14 CACHE STRING "The C++ standard to use for nanodbc")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 message(STATUS "nanodbc compile: C++${CMAKE_CXX_STANDARD}")
 
+if((CMAKE_MAJOR_VERSION VERSION_GREATER_EQUAL 3) AND (CMAKE_MINOR_VERSION VERSION_GREATER_EQUAL 24))
+  set(CMAKE_COMPILE_WARNING_AS_ERROR ON CACHE BOOL "Treat warnings on nanodbc compile as errors")
+  message(STATUS "nanodbc compile: warning-as-error ${CMAKE_COMPILE_WARNING_AS_ERROR}")
+else()
+  message(STATUS "nanodbc compile: warning-as-error toolset defaults")
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_COMPILER_IS_GNUCXX)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wnarrowing -Werror")
   include(CheckCXXCompilerFlag)
 
   if (NANODBC_ENABLE_COVERAGE)
@@ -112,6 +121,10 @@ if(NANODBC_ENABLE_WORKAROUND_NODATA)
 endif()
 message(STATUS "nanodbc feature: Enable SQL_NO_DATA bug workaround - ${NANODBC_ENABLE_WORKAROUND_NODATA}")
 
+if(NANODBC_OVERALLOCATE_CHAR)
+  add_definitions(-DNANODBC_OVERALLOCATE_CHAR)
+endif()
+message(STATUS "nanodbc feature: Allocate buffers of sufficient length such that Unicode can be stored in VAR/CHAR columns - ${NANODBC_OVERALLOCATE_CHAR}")
 ########################################
 ## find unixODBC or iODBC config binary
 ########################################
