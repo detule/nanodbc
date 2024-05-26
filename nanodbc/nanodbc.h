@@ -367,6 +367,21 @@ private:
 ///
 /// \{
 
+/// \brief A type capturing parameter array length as well as
+/// number of rows in a rowset of a result.
+struct batch_ops
+{
+    long parameter_array_length;
+    long rowset_size;
+
+    batch_ops()
+        : parameter_array_length(-1L)
+        , rowset_size(-1L){};
+    batch_ops(const long all_length)
+        : parameter_array_length(all_length)
+        , rowset_size(all_length){};
+};
+
 /// \brief A type for representing date data.
 struct date
 {
@@ -823,6 +838,22 @@ public:
         class connection& conn,
         string const& query,
         long batch_operations = 1,
+        long timeout = 0);
+
+    /// \brief Opens, prepares, and executes the given query directly on the given connection.
+    /// \param conn The connection where the statement will be executed.
+    /// \param query The SQL query that will be executed.
+    /// \param array_sizes More granular control of rows to fetch per rowset, and the number of
+    ///                    batch parameters to process.
+    /// \param timeout The number in seconds before query timeout. Default 0 meaning no timeout.
+    /// \return A result set object.
+    /// \attention You will want to use transactions if you are doing batch operations because it
+    ///            will prevent auto commits occurring after each individual operation is executed.
+    /// \see open(), prepare(), execute(), result, transaction
+    class result execute_direct(
+        class connection& conn,
+        string const& query,
+        batch_ops const& array_sizes,
         long timeout = 0);
 
 #if !defined(NANODBC_DISABLE_ASYNC)
@@ -2397,8 +2428,7 @@ std::list<datasource> list_datasources();
 /// connection.
 /// \param conn The connection where the statement will be executed.
 /// \param query The SQL query that will be executed.
-/// \param batch_operations Numbers of rows to fetch per rowset, or the number of batch parameters
-/// to process.
+/// \param batch_operations Numbers of rows to fetch per rowset.
 /// \param timeout The number in seconds before query timeout. Default is 0 indicating no timeout.
 /// \return A result set object.
 /// \attention You will want to use transactions if you are doing batch operations because it will
