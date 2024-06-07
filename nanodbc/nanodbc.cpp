@@ -1897,8 +1897,8 @@ public:
                 SQLSetStmtAttr,
                 rc,
                 stmt_,
-                SQL_ATTR_CURSOR_SCROLLABLE,
-                (SQLPOINTER)(std::intptr_t)SQL_SCROLLABLE,
+                SQL_ATTR_CURSOR_TYPE,
+                (SQLPOINTER)(std::intptr_t)SQL_CURSOR_DYNAMIC,
                 0);
             if (!success(rc))
                 NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
