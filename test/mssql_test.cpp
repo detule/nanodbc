@@ -509,12 +509,7 @@ TEST_CASE_METHOD(
         conn,
         NANODBC_TEXT("select i, s1_bound, s2_unbound from test_variable_string order by i;"),
         array_sizes);
-/*
-    nanodbc::result results = nanodbc::execute(
-        conn,
-        NANODBC_TEXT("select i, s1_bound, s2_unbound from test_variable_string order by i;"),
-        rowset_size);
-*/
+
     REQUIRE(results.next());
     REQUIRE(results.get<nanodbc::string>(1) == NANODBC_TEXT("this is a shorter text in bound col"));
     REQUIRE(
@@ -541,6 +536,11 @@ TEST_CASE_METHOD(
     "test_block_cursor_with_nvarchar_and_first_row_null",
     "[mssql][nvarchar][block][rowset]")
 {
+    /* In this test there are no long / unbound columns.
+     * It is fine to execute without changing the cursor type
+     * to one that is scrollable
+     * ( as SQLSetPos/SQLGetData is never called ).
+     */
     nanodbc::connection conn = connect();
     std::size_t const rowset_size = 2;
 

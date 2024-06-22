@@ -1632,6 +1632,10 @@ public:
 
     void open(class connection& conn)
     {
+        if (open() && connected() && conn_.native_dbc_handle() == conn.native_dbc_handle())
+        {
+            return;
+        }
         close();
         RETCODE rc;
         NANODBC_CALL_RC(SQLAllocHandle, rc, SQL_HANDLE_STMT, conn.native_dbc_handle(), &stmt_);
@@ -1648,15 +1652,15 @@ public:
 
     void open(class connection& conn, std::list<attribute> const& attributes)
     {
-      open(conn);
-      for (const attribute& attr : attributes)
-      {
-        if (attr.value_ptr_ == nullptr)
+        open(conn);
+        for (const attribute& attr : attributes)
         {
-          continue;
+            if (attr.value_ptr_ == nullptr)
+            {
+                continue;
+            }
+            this->set_attribute(attr.attribute_, attr.string_length_, attr.value_ptr_);
         }
-        this->set_attribute(attr.attribute_, attr.string_length_, attr.value_ptr_);
-      }
     }
 
     bool open() const { return open_; }
@@ -1758,12 +1762,16 @@ public:
     {
         // some drivers don't support timeout for statements,
         // so only raise the error if a non-default timeout was requested.
-        try {
-          this->set_attribute(SQL_ATTR_QUERY_TIMEOUT, 0, &timeout);
-        } catch ( ... ) {
-          if ( timeout != 0 ) {
-            throw;
-          }
+        try
+        {
+            this->set_attribute(SQL_ATTR_QUERY_TIMEOUT, 0, &timeout);
+        }
+        catch (...)
+        {
+            if (timeout != 0)
+            {
+                throw;
+            }
         }
         return;
     }
@@ -1931,21 +1939,6 @@ public:
 #endif
 
         RETCODE rc;
-        /*
-        if (array_sizes.rowset_size > 1)
-        {
-            NANODBC_CALL_RC(
-                SQLSetStmtAttr,
-                rc,
-                stmt_,
-                SQL_ATTR_CURSOR_TYPE,
-                (SQLPOINTER)(std::intptr_t)SQL_CURSOR_DYNAMIC,
-                0);
-            if (!success(rc))
-                NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
-        }
-        */
-
         if (array_sizes.parameter_array_length > 0)
         {
             NANODBC_CALL_RC(
