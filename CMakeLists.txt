@@ -74,7 +74,7 @@ message( STATUS "nanodbc version: ${NANODBC_VERSION}" )
 ########################################
 # set project-global variables for tests/examples if we're not a subproject
 if( PROJECT_IS_TOP_LEVEL )
-  set(CMAKE_CXX_STANDARD 14 CACHE STRING "The C++ standard to use for nanodbc")
+  set(CMAKE_CXX_STANDARD 17 CACHE STRING "The C++ standard to use for nanodbc")
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
@@ -85,7 +85,7 @@ target_sources( nanodbc PUBLIC FILE_SET HEADERS FILES nanodbc/nanodbc.h )
 message( STATUS "nanodbc compile: Global setting: C++${CMAKE_CXX_STANDARD}; nanodbc requires C++14 or greater" )
 
 # nanodbc requires at least C++14, but can use C++17 and beyond
-target_compile_features(nanodbc PRIVATE cxx_std_14)
+target_compile_features(nanodbc PRIVATE cxx_std_17)
 
 message( STATUS "nanodbc compile: warning-as-error ${NANODBC_FORCE_WARNINGS_AS_ERROR}" )
 if( NANODBC_FORCE_WARNINGS_AS_ERROR )

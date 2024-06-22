@@ -857,11 +857,11 @@ inline void allocate_dbc_handle(SQLHDBC& conn, SQLHENV env)
 
 } // namespace
 
-// connection::attribute
+// nanodbc::attribute
 #if __cpp_lib_variant >= 201606L
 namespace nanodbc
 {
-connection::attribute::attribute(
+attribute::attribute(
     long const& attribute,
     long const& string_length,
     attribute::variant const& resource)
@@ -872,7 +872,7 @@ connection::attribute::attribute(
 {
     this->extractValuePtr();
 }
-connection::attribute::attribute(attribute const& other)
+attribute::attribute(attribute const& other)
     : attribute_(other.attribute_)
     , string_length_(other.string_length_)
     , resource_(other.resource_)
@@ -880,7 +880,7 @@ connection::attribute::attribute(attribute const& other)
 {
     this->extractValuePtr();
 }
-void connection::attribute::extractValuePtr()
+void attribute::extractValuePtr()
 {
     std::visit(
         [this](auto&& arg)
@@ -1571,6 +1571,27 @@ public:
         open(conn);
     }
 
+    explicit statement_impl(class connection& conn, const std::list<attribute>& attributes)
+        : stmt_(nullptr)
+        , open_(false)
+        , conn_()
+        , bind_len_or_null_()
+        , wide_string_data_()
+        , string_data_()
+        , binary_data_()
+#if defined(NANODBC_DO_ASYNC_IMPL)
+        , async_(false)
+        , async_enabled_(false)
+        , async_event_(nullptr)
+#endif
+#ifndef NANODBC_DISABLE_MSSQL_TVP
+        , tvp_data_()
+        , open_tvp_(false)
+#endif
+    {
+        open(conn, attributes);
+    }
+
     statement_impl(class connection& conn, string const& query, long timeout)
         : stmt_(nullptr)
         , open_(false)
@@ -1623,6 +1644,19 @@ public:
                 NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
         }
         conn_ = conn;
+    }
+
+    void open(class connection& conn, std::list<attribute> const& attributes)
+    {
+      open(conn);
+      for (const attribute& attr : attributes)
+      {
+        if (attr.value_ptr_ == nullptr)
+        {
+          continue;
+        }
+        this->set_attribute(attr.attribute_, attr.string_length_, attr.value_ptr_);
+      }
     }
 
     bool open() const { return open_; }
@@ -1722,18 +1756,24 @@ public:
 
     void timeout(long timeout)
     {
-        RETCODE rc;
-        NANODBC_CALL_RC(
-            SQLSetStmtAttr,
-            rc,
-            stmt_,
-            SQL_ATTR_QUERY_TIMEOUT,
-            (SQLPOINTER)(std::intptr_t)timeout,
-            0);
-
         // some drivers don't support timeout for statements,
         // so only raise the error if a non-default timeout was requested.
-        if (!success(rc) && (timeout != 0))
+        try {
+          this->set_attribute(SQL_ATTR_QUERY_TIMEOUT, 0, &timeout);
+        } catch ( ... ) {
+          if ( timeout != 0 ) {
+            throw;
+          }
+        }
+        return;
+    }
+
+    void set_attribute(long const& attr, long const& size, const void* buffer)
+    {
+        RETCODE rc;
+
+        NANODBC_CALL_RC(SQLSetStmtAttr, rc, stmt_, attr, (SQLPOINTER)(buffer), size);
+        if (!success(rc))
             NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
     }
 
@@ -1891,6 +1931,7 @@ public:
 #endif
 
         RETCODE rc;
+        /*
         if (array_sizes.rowset_size > 1)
         {
             NANODBC_CALL_RC(
@@ -1903,6 +1944,7 @@ public:
             if (!success(rc))
                 NANODBC_THROW_DATABASE_ERROR(stmt_, SQL_HANDLE_STMT);
         }
+        */
 
         if (array_sizes.parameter_array_length > 0)
         {
@@ -5239,6 +5281,11 @@ statement::statement()
 
 statement::statement(class connection& conn)
     : impl_(new statement_impl(conn))
+{
+}
+
+statement::statement(class connection& conn, std::list<attribute> const& attributes)
+    : impl_(new statement_impl(conn, attributes))
 {
 }
 
