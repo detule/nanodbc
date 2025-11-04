@@ -1525,6 +1525,35 @@ TEST_CASE_METHOD(mssql_fixture, "test_bind_float", "[mssql][number][float]")
     }
 }
 
+TEST_CASE_METHOD(mssql_fixture, "test_bind_date_to_datetime", "[mssql][bind][datetime]")
+{
+    auto conn = connect();
+    create_table(
+        conn,
+        NANODBC_TEXT("test_bind_date_to_datetime"),
+        NANODBC_TEXT("(vch varchar(256), dtm datetime)"));
+
+    nanodbc::statement stmt(conn);
+    prepare(stmt, NANODBC_TEXT("insert into test_bind_date_to_datetime(vch, dtm) values (?,?)"));
+
+    std::vector<std::string> strings;
+    strings.emplace_back("TEST");
+    nanodbc::date dt{.year = 2025, .month = 11, .day = 4};
+    stmt.bind_strings(0, strings);
+    stmt.bind(1, &dt);
+
+    nanodbc::transact(stmt, 1);
+    {
+        auto result =
+            nanodbc::execute(conn, NANODBC_TEXT("select vch, dtm from test_bind_date_to_datetime"));
+        result.next();
+        REQUIRE(result.get<std::string>(0) == "TEST");
+        REQUIRE(result.get<nanodbc::date>(1).year == dt.year);
+        REQUIRE(result.get<nanodbc::date>(1).month == dt.month);
+        REQUIRE(result.get<nanodbc::date>(1).day == dt.day);
+    }
+}
+
 #if defined(_MSC_VER) && defined(_UNICODE)
 TEST_CASE_METHOD(mssql_fixture, "test_bind_variant", "[mssql][variant]")
 {
