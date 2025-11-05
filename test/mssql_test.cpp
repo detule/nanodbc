@@ -1536,21 +1536,27 @@ TEST_CASE_METHOD(mssql_fixture, "test_bind_date_to_datetime", "[mssql][bind][dat
     nanodbc::statement stmt(conn);
     prepare(stmt, NANODBC_TEXT("insert into test_bind_date_to_datetime(vch, dtm) values (?,?)"));
 
+    std::vector<uint8_t> nulls(2, false);
     std::vector<std::string> strings;
-    strings.emplace_back("TEST");
-    nanodbc::date dt{.year = 2025, .month = 11, .day = 4};
-    stmt.bind_strings(0, strings);
-    stmt.bind(1, &dt);
+    strings.emplace_back("TEST1");
+    strings.emplace_back("TEST2");
+    stmt.bind_strings(0, strings, reinterpret_cast<bool*>(nulls.data()));
 
-    nanodbc::transact(stmt, 1);
+
+    std::vector<nanodbc::date> dates;
+    dates.emplace_back(nanodbc::date({.year = 2025, .month = 11, .day = 4}));
+    dates.emplace_back(nanodbc::date({.year = 2025, .month = 11, .day = 5}));
+    stmt.bind(1, dates.data(), 2, reinterpret_cast<bool*>(nulls.data()));
+
+    nanodbc::execute(stmt, 2);
     {
         auto result =
             nanodbc::execute(conn, NANODBC_TEXT("select vch, dtm from test_bind_date_to_datetime"));
         result.next();
-        REQUIRE(result.get<std::string>(0) == "TEST");
-        REQUIRE(result.get<nanodbc::date>(1).year == dt.year);
-        REQUIRE(result.get<nanodbc::date>(1).month == dt.month);
-        REQUIRE(result.get<nanodbc::date>(1).day == dt.day);
+        REQUIRE(result.get<std::string>(0) == "TEST1");
+        REQUIRE(result.get<nanodbc::date>(1).year == dates[0].year);
+        REQUIRE(result.get<nanodbc::date>(1).month == dates[0].month);
+        REQUIRE(result.get<nanodbc::date>(1).day == dates[0].day);
     }
 }
 

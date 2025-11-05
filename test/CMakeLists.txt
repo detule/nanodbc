@@ -17,7 +17,7 @@ add_test(NAME utility_tests COMMAND utility_tests)
 add_dependencies(tests utility_tests)
 
 # Database-specific tests
-set(test_list mssql mysql postgresql sqlite vertica) # odbc_test.cpp is a dummy
+set(test_list oracle mssql mysql postgresql sqlite vertica) # odbc_test.cpp is a dummy
 
 foreach(test_item IN LISTS test_list)
   # AppVeyor set common environment variable CI
